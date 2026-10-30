@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@keyframes edgeFlow {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes synergyPulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(45, 212, 191, 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.7));
+  }
+}
+
+.animate-edge-flow {
+  animation: edgeFlow 1.4s linear infinite;
+}
+
+.animate-synergy-pulse {
+  animation: synergyPulse 2.4s ease-in-out infinite;
+}

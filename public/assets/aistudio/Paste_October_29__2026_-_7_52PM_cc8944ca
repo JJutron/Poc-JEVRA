@@ -1,0 +1,792 @@
+import React, { useState, useMemo } from 'react';
+import { 
+  Search, Filter, ShieldAlert, Users, CheckCircle2, 
+  AlertTriangle, GitCommit, ArrowRight, UserCheck, 
+  UserMinus, RefreshCw, Layers, Sparkles, Building2, 
+  FolderGit2, Cpu, Plus, X, ChevronRight, SlidersHorizontal
+} from 'lucide-react';
+
+// --- 초기 데이터셋 (Jev 정규화 전/후 및 관계 데이터) ---
+const INITIAL_PEOPLE = [
+  {
+    id: 'p1',
+    name: '김현우',
+    role: '수석 아키텍트',
+    dept: '금융AX팀',
+    exp: '8년',
+    status: 'Available',
+    rollOff: '즉시 투입 가능',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    skills: ['Java', 'Spring', 'RAG', 'Oracle'],
+    rawProject: 'A은행 차세대 구축',
+    normProject: 'prj1',
+    jevConf: 0.96,
+    x: 220,
+    y: 150
+  },
+  {
+    id: 'p2',
+    name: '이지은',
+    role: '선임 엔지니어',
+    dept: 'Talent AX팀',
+    exp: '5년',
+    status: 'RollOffSoon',
+    rollOff: '2주 후 종료 (11/15)',
+    avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
+    skills: ['Python', 'FastAPI', 'RAG', 'vLLM'],
+    rawProject: 'A은행 차세대 PJT', // 표기 변형 (정규화 시 prj1로 통합)
+    normProject: 'prj1',
+    jevConf: 0.91,
+    x: 220,
+    y: 360
+  },
+  {
+    id: 'p3',
+    name: '박태준',
+    role: '프론트엔드 리드',
+    dept: '플랫폼개발팀',
+    exp: '6년',
+    status: 'Available',
+    rollOff: '즉시 투입 가능',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    skills: ['React', 'Nuxt', 'TypeScript'],
+    rawProject: '산재 근로자 포털 이관',
+    normProject: 'prj2',
+    jevConf: 0.94,
+    x: 220,
+    y: 560
+  },
+  {
+    id: 'p4',
+    name: '최윤아',
+    role: 'ML 엔지니어',
+    dept: 'AI리서치팀',
+    exp: '4년',
+    status: 'Busy',
+    rollOff: '2027.02 종료',
+    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+    skills: ['Python', 'vLLM', 'GraphDB'],
+    rawProject: '사내 인재 탐색 챗봇',
+    normProject: 'prj2',
+    jevConf: 0.62, // 낮은 확신도 -> 관리자 확인 대상
+    x: 820,
+    y: 250
+  },
+  {
+    id: 'p5',
+    name: '정민호',
+    role: '데이터 엔지니어',
+    dept: '금융AX팀',
+    exp: '7년',
+    status: 'Available',
+    rollOff: '즉시 투입 가능',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    skills: ['Java', 'Kafka', 'GraphDB'],
+    rawProject: 'A은행 차세대 시스템', // 표기 변형 (정규화 시 prj1로 통합)
+    normProject: 'prj1',
+    jevConf: 0.89,
+    x: 820,
+    y: 480
+  }
+];
+
+const PROJECTS = [
+  {
+    id: 'prj1',
+    name: 'A은행 차세대 구축 (표준 엔티티)',
+    client: 'A금융그룹',
+    period: '2025.03 - 2026.08',
+    reqSkills: ['Java', 'RAG', 'GraphDB'],
+    rawVariants: ['A은행 차세대 구축', 'A은행 차세대 PJT', 'A은행 차세대 시스템'],
+    x: 520,
+    y: 230
+  },
+  {
+    id: 'prj2',
+    name: '인재 지식 그래프 & 포털 고도화',
+    client: 'SK AX (사내)',
+    period: '2026.05 - 진행중',
+    reqSkills: ['Nuxt', 'FastAPI', 'vLLM', 'GraphDB'],
+    rawVariants: ['산재 근로자 포털 이관', '사내 인재 탐색 챗봇'],
+    x: 520,
+    y: 480
+  }
+];
+
+export default function TalentGraphMockup() {
+  // --- 상태 관리 ---
+  const [isNormalized, setIsNormalized] = useState(true); // Jev 정규화 ON/OFF
+  const [selectedPersonId, setSelectedPersonId] = useState('p1');
+  const [rightTab, setRightTab] = useState('profile'); // 'profile' | 'teambuilder' | 'jev'
+  
+  // 필터 상태
+  const [searchQuery, setSearchQuery] = useState('');
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [includeRollOff, setIncludeRollOff] = useState(true);
+  const [selectedSkills, setSelectedSkills] = useState([]);
+
+  // 현업 해결 기능 1: 드림팀 시뮬레이터 카트
+  const [teamCart, setTeamCart] = useState(['p1', 'p2']);
+
+  // 현업 해결 기능 2: 핵심 인력 이탈(Bus Factor) 시뮬레이션
+  const [removedPersonId, setRemovedPersonId] = useState(null);
+
+  // Jev 낮은 확신도 승인 상태
+  const [approvedLowConf, setApprovedLowConf] = useState(false);
+
+  const allSkills = ['Java', 'Python', 'RAG', 'vLLM', 'GraphDB', 'Nuxt', 'FastAPI'];
+
+  // 필터링된 인재 목록
+  const filteredPeople = useMemo(() => {
+    return INITIAL_PEOPLE.filter(p => {
+      if (onlyAvailable && p.status === 'Busy') return false;
+      if (!includeRollOff && p.status === 'RollOffSoon') return false;
+      if (selectedSkills.length > 0 && !selectedSkills.some(s => p.skills.includes(s))) return false;
+      if (searchQuery.trim() !== '') {
+        const q = searchQuery.toLowerCase();
+        const matchName = p.name.toLowerCase().includes(q);
+        const matchSkill = p.skills.some(s => s.toLowerCase().includes(q));
+        const matchPrj = p.rawProject.toLowerCase().includes(q);
+        return matchName || matchSkill || matchPrj;
+      }
+      return true;
+    });
+  }, [onlyAvailable, includeRollOff, selectedSkills, searchQuery]);
+
+  const selectedPerson = INITIAL_PEOPLE.find(p => p.id === selectedPersonId) || INITIAL_PEOPLE[0];
+
+  // 팀 시너지 계산 로직 (과거 같은 표준 프로젝트 수행 여부 & 기술 커버리지)
+  const teamMetrics = useMemo(() => {
+    const members = INITIAL_PEOPLE.filter(p => teamCart.includes(p.id));
+    if (members.length === 0) return { synergyScore: 0, sharedProjects: 0, coveredSkills: [], missingSkills: ['Java', 'RAG', 'GraphDB', 'Nuxt'] };
+
+    // 함께 수행한 프로젝트 수 확인 (정규화 켜져 있을 때만 정확히 잡힘)
+    const prjCounts = {};
+    members.forEach(m => {
+      const key = isNormalized ? m.normProject : m.rawProject;
+      prjCounts[key] = (prjCounts[key] || 0) + 1;
+    });
+    const sharedCount = Object.values(prjCounts).filter(c => c > 1).length;
+    const synergyScore = Math.min(100, (sharedCount * 45) + (members.length * 15));
+
+    const targetSkills = ['Java', 'RAG', 'GraphDB', 'Nuxt', 'vLLM'];
+    const covered = Array.from(new Set(members.flatMap(m => m.skills)));
+    const missing = targetSkills.filter(s => !covered.includes(s));
+
+    return { synergyScore, sharedCount, coveredSkills: covered, missingSkills: missing, members };
+  }, [teamCart, isNormalized]);
+
+  // 이탈 시뮬레이션(Bus Factor) 위험 분석
+  const busFactorAlert = useMemo(() => {
+    if (!removedPersonId) return null;
+    const target = INITIAL_PEOPLE.find(p => p.id === removedPersonId);
+    if (!target) return null;
+
+    // 해당 인재가 빠졌을 때 팀/전사에서 유일하거나 희귀해지는 스킬 계산
+    const remainingPeople = INITIAL_PEOPLE.filter(p => p.id !== removedPersonId);
+    const endangeredSkills = target.skills.filter(skill => {
+      const count = remainingPeople.filter(rp => rp.skills.includes(skill)).length;
+      return count <= 1;
+    });
+
+    // 같은 프로젝트에서 일한 최적 인수인계자 추천
+    const backupCandidates = remainingPeople.filter(rp => rp.normProject === target.normProject);
+
+    return {
+      person: target,
+      endangeredSkills,
+      isolatedClient: target.normProject === 'prj1' ? 'A금융그룹 차세대 아키텍처 맥락' : 'SK AX 포털 이관 히스토리',
+      backups: backupCandidates
+    };
+  }, [removedPersonId]);
+
+  const toggleSkillFilter = (skill) => {
+    setSelectedSkills(prev => prev.includes(skill) ? prev.filter(s => s !== skill) : [...prev, skill]);
+  };
+
+  const toggleTeamMember = (id) => {
+    setTeamCart(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  return (
+    <div className="flex flex-col h-screen w-full bg-[#F6F6F4] text-[#18181B] font-sans select-none overflow-hidden">
+      
+      {/* ================= 상단 헤더 바 ================= */}
+      <header className="h-14 bg-white border-b border-[#E4E4E0] px-5 flex items-center justify-between shrink-0 z-20">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 bg-[#18181B] text-white flex items-center justify-center rounded text-xs font-mono font-bold">
+              AX
+            </div>
+            <div>
+              <h1 className="text-sm font-bold tracking-tight flex items-center gap-2">
+                인재 지식 그래프 워크벤치
+                <span className="text-[11px] font-mono font-normal px-1.5 py-0.5 bg-[#F2F2EE] text-[#52525B] border border-[#E4E4E0] rounded">
+                  Jev Decision Model v2.4
+                </span>
+              </h1>
+            </div>
+          </div>
+
+          <div className="h-4 w-[1px] bg-[#E4E4E0] mx-1" />
+
+          {/* 자연어 관계 질의 바 */}
+          <div className="relative w-96">
+            <Search className="w-3.5 h-3.5 text-[#71717A] absolute left-3 top-1/2 -translate-y-1/2" />
+            <input 
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="관계 질문 입력 (예: A은행 차세대 함께 수행한 RAG 전문가)"
+              className="w-full pl-8 pr-16 py-1.5 text-xs bg-[#F8F8F6] border border-[#D4D4D0] rounded focus:outline-none focus:border-[#18181B] focus:bg-white transition-colors"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[#71717A] hover:text-black"
+              >
+                초기화
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 우측 핵심 컨트롤: Jev 엔티티 정규화 토글 & 시뮬레이션 상태 */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center bg-[#F2F2EE] p-1 rounded border border-[#E4E4E0]">
+            <button
+              onClick={() => setIsNormalized(false)}
+              className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${
+                !isNormalized 
+                  ? 'bg-white text-[#B91C1C] shadow-sm border border-[#E4E4E0]' 
+                  : 'text-[#71717A] hover:text-[#18181B]'
+              }`}
+            >
+              정규화 전 (자유기술 파편화)
+            </button>
+            <button
+              onClick={() => setIsNormalized(true)}
+              className={`px-2.5 py-1 text-xs font-medium rounded flex items-center gap-1.5 transition-all ${
+                isNormalized 
+                  ? 'bg-[#18181B] text-white shadow-sm' 
+                  : 'text-[#71717A] hover:text-[#18181B]'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              Jev 정규화 ON (표준 엔티티 연결)
+            </button>
+          </div>
+
+          <div className="text-right font-mono text-[11px] text-[#52525B] border-l border-[#E4E4E0] pl-3">
+            <div>탐색 응답: <span className="font-bold text-[#18181B]">{isNormalized ? '38ms' : '12,400ms'}</span></div>
+            <div>정규화 정확도: <span className="font-bold text-emerald-700">94.8%</span></div>
+          </div>
+        </div>
+      </header>
+
+      {/* ================= 메인 바디 (좌측 필터 / 중앙 그래프 캔버스 / 우측 액션 패널) ================= */}
+      <div className="flex flex-1 overflow-hidden">
+        
+        {/* --- 1. 좌측 사이드바: HR 실무 필터 & 현업 과제 도구 --- */}
+        <aside className="w-64 bg-white border-r border-[#E4E4E0] flex flex-col justify-between shrink-0 z-10 overflow-y-auto">
+          <div className="p-4 space-y-5">
+            
+            {/* 가용성 및 Roll-off 타임라인 필터 */}
+            <div>
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#52525B] flex items-center gap-1.5">
+                  <SlidersHorizontal className="w-3.5 h-3.5" /> 인력 가용성 필터
+                </span>
+                <span className="text-[11px] font-mono text-[#71717A]">{filteredPeople.length}명 표시</span>
+              </div>
+
+              <div className="space-y-2 bg-[#F8F8F6] p-3 rounded border border-[#E4E4E0]">
+                <label className="flex items-center justify-between cursor-pointer text-xs">
+                  <span className="font-medium">즉시 가용 인력만 보기</span>
+                  <input 
+                    type="checkbox" 
+                    checked={onlyAvailable} 
+                    onChange={(e) => setOnlyAvailable(e.target.checked)}
+                    className="accent-[#18181B] w-3.5 h-3.5"
+                  />
+                </label>
+                <label className="flex items-center justify-between cursor-pointer text-xs pt-1.5 border-t border-[#E4E4E0]">
+                  <div>
+                    <span className="font-medium block">종료 임박(Roll-off) 포함</span>
+                    <span className="text-[10px] text-[#71717A]">1개월 내 프로젝트 종료 인재 선점</span>
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    checked={includeRollOff} 
+                    onChange={(e) => setIncludeRollOff(e.target.checked)}
+                    className="accent-[#18181B] w-3.5 h-3.5"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* 기술 스택 필터 */}
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#52525B] block mb-2">
+                핵심 기술 (표준 사전)
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {allSkills.map(skill => {
+                  const active = selectedSkills.includes(skill);
+                  return (
+                    <button
+                      key={skill}
+                      onClick={() => toggleSkillFilter(skill)}
+                      className={`px-2 py-1 text-xs font-mono rounded border transition-colors ${
+                        active 
+                          ? 'bg-[#18181B] text-white border-[#18181B]' 
+                          : 'bg-white text-[#52525B] border-[#D4D4D0] hover:bg-[#F2F2EE]'
+                      }`}
+                    >
+                      {skill}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* HR 현업 문제 해결 모드 바로가기 */}
+            <div className="pt-2 border-t border-[#E4E4E0] space-y-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#52525B] block mb-2">
+                HR 의사결정 시뮬레이터
+              </span>
+
+              {/* 기능 A: 드림팀 시너지 카트 열기 */}
+              <button
+                onClick={() => setRightTab('teambuilder')}
+                className={`w-full text-left p-2.5 rounded border transition-all ${
+                  rightTab === 'teambuilder'
+                    ? 'bg-[#18181B] text-white border-[#18181B]'
+                    : 'bg-[#F8F8F6] text-[#18181B] border-[#D4D4D0] hover:bg-[#EFECE6]'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5" /> 드림팀 조합 빌더
+                  </span>
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                    rightTab === 'teambuilder' ? 'bg-white/20 text-white' : 'bg-[#E4E4E0] text-[#18181B]'
+                  }`}>
+                    {teamCart.length}명 선택됨
+                  </span>
+                </div>
+                <p className={`text-[11px] mt-1 leading-snug ${
+                  rightTab === 'teambuilder' ? 'text-zinc-300' : 'text-[#71717A]'
+                }`}>
+                  과거 동일 프로젝트 손발 검증 및 기술 커버리지 시뮬레이션
+                </p>
+              </button>
+
+              {/* 기능 B: 이탈 위험도 (Bus Factor) 시뮬레이션 */}
+              <div className="p-2.5 rounded border border-[#D4D4D0] bg-[#F8F8F6]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-[#991B1B]">
+                    <ShieldAlert className="w-3.5 h-3.5" /> 도메인 고립(Bus Factor) 진단
+                  </span>
+                  {removedPersonId && (
+                    <button 
+                      onClick={() => setRemovedPersonId(null)}
+                      className="text-[10px] underline text-[#52525B]"
+                    >
+                      해제
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-[#71717A] mb-2 leading-snug">
+                  특정 인재 퇴사·이동 시 끊어지는 고객사 맥락과 대체자를 탐색합니다.
+                </p>
+                <select
+                  value={removedPersonId || ''}
+                  onChange={(e) => setRemovedPersonId(e.target.value || null)}
+                  className="w-full text-xs p-1.5 bg-white border border-[#D4D4D0] rounded font-medium"
+                >
+                  <option value="">-- 이탈 시뮬레이션 대상 선택 --</option>
+                  {INITIAL_PEOPLE.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 기능 C: Jev 낮은 확신도 사람 확인 큐 */}
+              <button
+                onClick={() => setRightTab('jev')}
+                className={`w-full text-left p-2.5 rounded border transition-all ${
+                  rightTab === 'jev'
+                    ? 'bg-[#18181B] text-white border-[#18181B]'
+                    : 'bg-[#F8F8F6] text-[#18181B] border-[#D4D4D0] hover:bg-[#EFECE6]'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold flex items-center gap-1.5">
+                    <GitCommit className="w-3.5 h-3.5" /> Jev 정규화 검수 큐
+                  </span>
+                  {!approvedLowConf && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+                      1건 대기
+                    </span>
+                  )}
+                </div>
+                <p className={`text-[11px] mt-1 leading-snug ${
+                  rightTab === 'jev' ? 'text-zinc-300' : 'text-[#71717A]'
+                }`}>
+                  확신도 0.65 미만 자유기술 표기 관리자 승인/교정
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* 하단 범례 */}
+          <div className="p-3 bg-[#F8F8F6] border-t border-[#E4E4E0] text-[11px] text-[#52525B] space-y-1.5">
+            <div className="font-bold text-[#18181B] mb-1">그래프 엣지(연결선) 범례</div>
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-0.5 bg-[#18181B] inline-block" /> 표준 프로젝트 참여 (Jev 정규화됨)
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-0.5 border-b-2 border-dashed border-emerald-600 inline-block" /> 과거 협업 동료 시너지 (구면)
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-0.5 border-b-2 border-dotted border-amber-600 inline-block" /> 확신도 낮음 (관리자 확인 대기)
+            </div>
+          </div>
+        </aside>
+
+        {/* --- 2. 중앙 메인 그래프 캔버스 (인물 카드 + 프로젝트 허브 + SVG 엣지) --- */}
+        <main className="flex-1 relative bg-[#F4F4F1] overflow-hidden">
+          {/* 미세 도트 그리드 배경 (엔터프라이즈 캔버스 스타일) */}
+          <div 
+            className="absolute inset-0 opacity-40 pointer-events-none"
+            style={{
+              backgroundImage: 'radial-gradient(#A1A1AA 1px, transparent 1px)',
+              backgroundSize: '20px 20px'
+            }}
+          />
+
+          {/* 상단 플로팅 상태 배너 (정규화 비교 안내 & 이탈 경고) */}
+          <div className="absolute top-4 left-4 right-4 flex items-start justify-between pointer-events-none z-20">
+            <div className="bg-white/95 backdrop-blur border border-[#D4D4D0] px-3.5 py-2 rounded shadow-sm pointer-events-auto max-w-xl">
+              {isNormalized ? (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
+                  <span>
+                    <strong>Jev 엔티티 정규화 활성:</strong> 서로 다르게 적힌 <code className="bg-[#F2F2EE] px-1 py-0.5 rounded font-mono text-[11px]">"A은행 차세대 구축"</code>, <code className="bg-[#F2F2EE] px-1 py-0.5 rounded font-mono text-[11px]">"A은행 차세대 PJT"</code>, <code className="bg-[#F2F2EE] px-1 py-0.5 rounded font-mono text-[11px]">"A은행 차세대 시스템"</code>이 단일 표준 프로젝트 노드로 묶여 <strong>김현우·이지은·정민호의 동료 관계</strong>가 복원되었습니다.
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-[#991B1B]">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>
+                    <strong>정규화 해제 상태 (기존 자유기술):</strong> 각자 프로젝트명을 다르게 적어 같은 고객사 프로젝트를 수행했음에도 그래프 연결이 끊어져 있습니다.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* 이탈 시뮬레이션 경고 배너 */}
+            {busFactorAlert && (
+              <div className="bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] px-4 py-2.5 rounded shadow-sm pointer-events-auto max-w-sm">
+                <div className="text-xs font-bold flex items-center justify-between">
+                  <span>⚠️ [{busFactorAlert.person.name}] 이탈 시 고립 위험 감지</span>
+                  <button onClick={() => setRemovedPersonId(null)} className="text-[11px] underline ml-2">닫기</button>
+                </div>
+                <div className="text-[11px] mt-1 space-y-0.5">
+                  <div>• <strong>위험 도메인:</strong> {busFactorAlert.isolatedClient}</div>
+                  <div>• <strong>희소 기술 공백:</strong> {busFactorAlert.endangeredSkills.join(', ') || '없음'}</div>
+                  <div className="pt-1 text-[#18181B] font-medium">
+                    👉 <strong>추천 인수인계자 (동일 프로젝트):</strong> {busFactorAlert.backups.map(b => b.name).join(', ')}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* --- SVG 연결선(Edge) 레이어 --- */}
+          <svg className="w-full h-full absolute inset-0 pointer-events-none">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#71717A" />
+              </marker>
+            </defs>
+
+            {/* 1) 인재 -> 표준 프로젝트 연결선 (정규화 ON 일 때) */}
+            {isNormalized && filteredPeople.map(person => {
+              const targetPrj = PROJECTS.find(pr => pr.id === person.normProject);
+              if (!targetPrj) return null;
+              const isLowConf = person.jevConf < 0.65 && !approvedLowConf;
+              const isRemoved = removedPersonId === person.id;
+
+              return (
+                <g key={`edge-${person.id}-${targetPrj.id}`}>
+                  <line
+                    x1={person.x}
+                    y1={person.y}
+                    x2={targetPrj.x}
+                    y2={targetPrj.y}
+                    stroke={isRemoved ? '#EF4444' : isLowConf ? '#D97706' : '#52525B'}
+                    strokeWidth={selectedPersonId === person.id ? 2.2 : 1.4}
+                    strokeDasharray={isRemoved ? '4 4' : isLowConf ? '3 3' : 'none'}
+                    opacity={isRemoved ? 0.35 : 0.75}
+                  />
+                  {/* 엣지 라벨 (Jev 확신도 표시) */}
+                  <rect
+                    x={(person.x + targetPrj.x) / 2 - 42}
+                    y={(person.y + targetPrj.y) / 2 - 10}
+                    width="84"
+                    height="18"
+                    rx="3"
+                    fill="#FFFFFF"
+                    stroke="#D4D4D0"
+                  />
+                  <text
+                    x={(person.x + targetPrj.x) / 2}
+                    y={(person.y + targetPrj.y) / 2 + 2}
+                    textAnchor="middle"
+                    className="text-[10px] font-mono fill-[#52525B]"
+                  >
+                    {isLowConf ? `검수대기 (${person.jevConf})` : `참여 (Jev ${person.jevConf})`}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* 2) 드림팀 카트에 담긴 인원끼리 과거 같은 프로젝트 수행 시 '협업 시너지' 연결선 표시 */}
+            {isNormalized && teamCart.length >= 2 && (
+              (() => {
+                const cartMembers = filteredPeople.filter(p => teamCart.includes(p.id));
+                const lines = [];
+                for (let i = 0; i < cartMembers.length; i++) {
+                  for (let j = i + 1; j < cartMembers.length; j++) {
+                    if (cartMembers[i].normProject === cartMembers[j].normProject) {
+                      lines.push(
+                        <g key={`synergy-${cartMembers[i].id}-${cartMembers[j].id}`}>
+                          <line
+                            x1={cartMembers[i].x}
+                            y1={cartMembers[i].y}
+                            x2={cartMembers[j].x}
+                            y2={cartMembers[j].y}
+                            stroke="#059669"
+                            strokeWidth="2.5"
+                            strokeDasharray="6 4"
+                          />
+                          <rect
+                            x={(cartMembers[i].x + cartMembers[j].x) / 2 - 38}
+                            y={(cartMembers[i].y + cartMembers[j].y) / 2 - 9}
+                            width="76"
+                            height="18"
+                            rx="9"
+                            fill="#ECFDF5"
+                            stroke="#059669"
+                          />
+                          <text
+                            x={(cartMembers[i].x + cartMembers[j].x) / 2}
+                            y={(cartMembers[i].y + cartMembers[j].y) / 2 + 3}
+                            textAnchor="middle"
+                            className="text-[10px] font-bold fill-[#065F46]"
+                          >
+                            동료 시너지 ✓
+                          </text>
+                        </g>
+                      );
+                    }
+                  }
+                }
+                return lines;
+              })()
+            )}
+          </svg>
+
+          {/* --- 중앙 프로젝트 허브 카드 노드들 --- */}
+          {PROJECTS.map(prj => {
+            // 이 프로젝트에 연결된 인원 수
+            const connectedCount = isNormalized 
+              ? INITIAL_PEOPLE.filter(p => p.normProject === prj.id).length 
+              : 1;
+
+            return (
+              <div
+                key={prj.id}
+                style={{ left: prj.x, top: prj.y }}
+                className="absolute -translate-x-1/2 -translate-y-1/2 w-64 bg-white border-2 border-[#18181B] rounded-md shadow-sm p-3.5 z-10"
+              >
+                <div className="flex items-center justify-between text-[10px] font-mono text-[#52525B] mb-1">
+                  <span className="flex items-center gap-1 font-bold text-[#18181B]">
+                    <Building2 className="w-3 h-3" /> {prj.client}
+                  </span>
+                  <span>{prj.period}</span>
+                </div>
+
+                <div className="text-xs font-bold text-[#18181B] mb-2">
+                  {isNormalized ? prj.name : `${prj.rawVariants[0]} (미정규화)`}
+                </div>
+
+                {/* 묶인 표기 변형 보여주기 */}
+                {isNormalized && (
+                  <div className="bg-[#F8F8F6] border border-[#E4E4E0] rounded p-1.5 mb-2">
+                    <div className="text-[10px] text-[#71717A] mb-1">통합된 자유기술 표기 ({prj.rawVariants.length}건):</div>
+                    <div className="flex flex-wrap gap-1">
+                      {prj.rawVariants.map((v, i) => (
+                        <span key={i} className="text-[10px] font-mono bg-white border border-[#D4D4D0] px-1 rounded text-[#52525B]">
+                          "{v}"
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-[#E4E4E0]">
+                  <div className="flex gap-1">
+                    {prj.reqSkills.map(s => (
+                      <span key={s} className="text-[10px] font-mono bg-[#F2F2EE] px-1.5 py-0.5 rounded text-[#18181B]">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="font-mono font-bold text-xs">
+                    {connectedCount}명 연결
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* --- 인물(Person) 얼굴 아바타 카드 노드들 --- */}
+          {filteredPeople.map(person => {
+            const isSelected = selectedPersonId === person.id;
+            const inTeamCart = teamCart.includes(person.id);
+            const isRemoved = removedPersonId === person.id;
+
+            // 상태 뱃지 스타일
+            const statusBadge = {
+              Available: { label: '가용 가능', cls: 'bg-emerald-50 text-emerald-800 border-emerald-300' },
+              RollOffSoon: { label: '2주 후 종료', cls: 'bg-amber-50 text-amber-800 border-amber-300' },
+              Busy: { label: '투입 중', cls: 'bg-zinc-100 text-zinc-600 border-zinc-300' }
+            }[person.status];
+
+            return (
+              <div
+                key={person.id}
+                onClick={() => {
+                  setSelectedPersonId(person.id);
+                  setRightTab('profile');
+                }}
+                style={{ left: person.x, top: person.y }}
+                className={`absolute -translate-x-1/2 -translate-y-1/2 w-56 bg-white rounded-md p-3 cursor-pointer transition-all z-10 ${
+                  isRemoved 
+                    ? 'opacity-40 border-2 border-dashed border-red-500 grayscale' 
+                    : isSelected 
+                      ? 'border-2 border-[#18181B] shadow-md ring-4 ring-black/5' 
+                      : 'border border-[#D4D4D0] hover:border-[#18181B] shadow-sm'
+                }`}
+              >
+                {/* 팀 빌딩 카트 담기 체크 버튼 */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleTeamMember(person.id);
+                    setRightTab('teambuilder');
+                  }}
+                  title="드림팀 조합 시뮬레이터에 추가/제거"
+                  className={`absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center text-xs border transition-colors ${
+                    inTeamCart 
+                      ? 'bg-[#059669] text-white border-[#059669]' 
+                      : 'bg-white text-[#52525B] border-[#D4D4D0] hover:border-[#18181B]'
+                  }`}
+                >
+                  {inTeamCart ? '✓' : '+'}
+                </button>
+
+                {/* 상단: 아바타 + 이름/직무 */}
+                <div className="flex items-center gap-2.5">
+                  <img 
+                    src={person.avatar} 
+                    alt={person.name} 
+                    className="w-10 h-10 rounded-full object-cover border border-[#E4E4E0] shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#18181B] truncate">{person.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${statusBadge.cls}`}>
+                        {statusBadge.label}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[#71717A] truncate">
+                      {person.dept} · {person.exp}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 중간: 보유 기술 태그 */}
+                <div className="flex flex-wrap gap-1 mt-2.5">
+                  {person.skills.map(skill => (
+                    <span 
+                      key={skill} 
+                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                        selectedSkills.includes(skill)
+                          ? 'bg-[#18181B] text-white border-[#18181B]'
+                          : 'bg-[#F8F8F6] text-[#52525B] border-[#E4E4E0]'
+                      }`}
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+
+                {/* 하단: 자유기술 원문 vs 정규화 상태 */}
+                <div className="mt-2 pt-2 border-t border-[#F2F2EE] flex items-center justify-between text-[10px] text-[#71717A]">
+                  <span className="truncate">이력: "{person.rawProject}"</span>
+                  <span className="font-mono text-[#18181B] font-semibold shrink-0 ml-1">
+                    Jev {person.jevConf}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </main>
+
+        {/* --- 3. 우측 상세 & HR 액션 패널 (3개 탭 전환) --- */}
+        <aside className="w-80 bg-white border-l border-[#E4E4E0] flex flex-col shrink-0 z-10">
+          
+          {/* 탭 네비게이션 */}
+          <div className="grid grid-cols-3 border-b border-[#E4E4E0] bg-[#F8F8F6] text-xs font-medium">
+            <button
+              onClick={() => setRightTab('profile')}
+              className={`py-2.5 border-b-2 transition-colors ${
+                rightTab === 'profile' ? 'border-[#18181B] text-[#18181B] bg-white font-bold' : 'border-transparent text-[#71717A]'
+              }`}
+            >
+              인재 상세/근거
+            </button>
+            <button
+              onClick={() => setRightTab('teambuilder')}
+              className={`py-2.5 border-b-2 transition-colors ${
+                rightTab === 'teambuilder' ? 'border-[#18181B] text-[#18181B] bg-white font-bold' : 'border-transparent text-[#71717A]'
+              }`}
+            >
+              팀 빌더 ({teamCart.length})
+            </button>
+            <button
+              onClick={() => setRightTab('jev')}
+              className={`py-2.5 border-b-2 transition-colors ${
+                rightTab === 'jev' ? 'border-[#18181B] text-[#18181B] bg-white font-bold' : 'border-transparent text-[#71717A]'
+              }`}
+            >
+              정규화 검수
+            </button>
+          </div>
+
+          {/* 탭 1: 선택된 인재 상세 프로필 & 관계 경로 근거 */}
+          {rightTab === 'profile' && (
+            <div className="p-4 flex-1 overflow-y-auto space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-[#E4E4E0]">
+                <img 
+                  src={selectedPerson.avatar} 
+                  alt={selectedPerson.name} 
+                  className="w-14 h-14 rounded-full object-cover border border-[#D4D4D0]"
+                />
+                <div>
+                  <h2 className="text-base font-bold text-[#18181B]">{selectedPerson.name}</h2>
+                  <p className="text-xs text-[#52525B]">{selectedPerson.dept} · {selectedPerson

@@ -1,0 +1,6 @@
+{
+  "name": "AX 인재 지식 그래프 워크벤치 (Jev Decision Model)",
+  "description": "Jev 엔티티 정규화 기반 사내 인재 지식 그래프 탐색, 드림팀 시너지 빌더 및 도메인 고립(Bus Factor) 진단 워크벤치",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
